@@ -53,5 +53,11 @@ except Exception as e:  # noqa: BLE001
     ok = False
     print(f"[FAIL] embedding       -> {e}")
 
-print("\nAll LLM checks passed." if ok else "\nSome LLM checks FAILED - see messages above.")
+if ok:
+    print("\nAll LLM checks passed.")
+else:
+    print(
+        "\nSome LLM checks FAILED. The real cause (e.g. AuthenticationError = bad key, NotFoundError = wrong "
+        "model name, APIConnectionError = network) is in the WARNING lines printed above."
+    )
 sys.exit(0 if ok else 1)

@@ -70,7 +70,7 @@ execution.
 curl -fsSLo ~/miniconda.sh https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
 bash ~/miniconda.sh -b -p "$HOME/miniconda3"
 "$HOME/miniconda3/bin/conda" init bash
-source ~/.bashrc
+source ~/.bashrc          # or close and reopen the terminal
 
 # New Miniconda refuses to create envs until the ToS is accepted:
 conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/main
@@ -88,8 +88,12 @@ git clone --branch v1.0.0 --depth 1 https://github.com/microsoft/RD-Agent.git
 git clone https://github.com/vijayvmane11-afk/Test-2026-16-09.git ~/rdagent-guide
 ```
 
-`~/rdagent-guide/rdagent-install/` contains this guide, `constraints-py311.txt` (the exact package
-versions that were tested) and `check_llm.py` (an LLM connectivity test).
+`~/rdagent-guide/rdagent-install/` contains:
+
+- this guide;
+- `constraints-py311.txt` and `constraints-qlib-py310.txt`, the exact package versions tested for the
+  two conda envs;
+- `check_llm.py`, an LLM connectivity test.
 
 ## Step 5: The `rdagent` environment (Python 3.11)
 
@@ -122,9 +126,10 @@ create it yourself:
 ```bash
 conda create -y -n rdagent4qlib python=3.10
 conda activate rdagent4qlib
-pip install --upgrade pip cython
-pip install "git+https://github.com/microsoft/qlib.git@2fb9380b342556ddb50a4b24e4fe8655d548b2b8"
-pip install "mlflow<3.13" catboost xgboost tables
+C=~/rdagent-guide/rdagent-install/constraints-qlib-py310.txt
+pip install --upgrade pip cython -c $C
+pip install "git+https://github.com/microsoft/qlib.git@2fb9380b342556ddb50a4b24e4fe8655d548b2b8" -c $C
+pip install "mlflow<3.13" catboost xgboost tables -c $C
 pip install torch==2.9.1 --index-url https://download.pytorch.org/whl/cpu
 conda deactivate
 ```
@@ -265,7 +270,8 @@ rdagent ui --port 19899 --log-dir log/
 ```
 
 1. Open <http://localhost:19899>.
-2. In the left sidebar, choose your run under **Select from log**.
+2. In the left sidebar, choose your run under **Select from log**. `health_check` and `check_llm.py`
+   also create small folders there; pick the one from your `fin_*` run.
 3. Click **All Loops**.
 
 You get Metrics charts (baseline vs. each round), a Hypotheses table, and Research, Development and
@@ -281,7 +287,7 @@ package is too old: v12 on 22.04, v18 on 24.04.
 
 ```bash
 curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash
-source ~/.bashrc
+source ~/.bashrc          # or close and reopen the terminal
 nvm install 22
 node --version            # v22.x
 ```
