@@ -326,8 +326,33 @@ download the generated factor files.
 
 Only one UI can use port 19899 at a time. Give the other UI a different `--port`.
 
-**Remote server?** From your laptop run `ssh -L 19899:localhost:19899 you@server` and open the URLs
-above locally. Or start with `--host 0.0.0.0` (Web UI only, and keep the token secret).
+### Opening the UIs on a remote server (e.g. an Azure or AWS VM)
+
+Both UIs speak **plain HTTP only**. If the browser uses `https://`, the server gets TLS bytes it cannot
+read and closes the connection. Chrome then shows **`ERR_EMPTY_RESPONSE`** ("didn't send any data").
+
+**Option A: SSH tunnel (recommended; no firewall changes, nothing exposed).** On your laptop:
+
+```bash
+ssh -L 19899:localhost:19899 you@<server-ip>
+```
+
+Keep that SSH session open, and open `http://localhost:19899` (Streamlit) or
+`http://localhost:19899/?token=<token>` (Web UI) in your laptop's browser.
+
+**Option B: direct access by IP.** All of these are needed:
+
+1. Make the server listen on all interfaces:
+   - Web UI: `rdagent server_ui --port 19899 --host 0.0.0.0` (the default is 127.0.0.1 only).
+   - Streamlit: `rdagent ui` already listens on all interfaces.
+2. Open TCP port 19899 in the cloud firewall. On Azure: VM → Networking → Add inbound port rule,
+   destination port 19899, ideally with the source restricted to your own IP.
+3. Type the address with an explicit `http://`, e.g. `http://<server-ip>:19899/?token=<token>`. If
+   Chrome still switches to https, turn off "Always use secure connections" in Chrome's security
+   settings, or use Option A.
+
+The Web UI token gives full control of the agent, so keep it secret. Don't leave the port open to
+the whole internet.
 
 ---
 
@@ -378,6 +403,9 @@ These are the problems found in RD-Agent v1.0.0, and what this guide does about 
 | `No such option: --loop_n` | Use dashes: `--loop-n`. |
 | Changed `.env` but nothing changed | You ran `rdagent` from another folder. Always `cd ~/RD-Agent` first. |
 | Web UI shows "UI_SERVER_AUTH_TOKEN must be configured" | Export the token in the same shell before `rdagent server_ui`. |
+| Browser shows `ERR_EMPTY_RESPONSE` / "didn't send any data" | You used `https://`. The UIs are HTTP only: use `http://<ip>:19899`, or an SSH tunnel (see "Opening the UIs on a remote server"). |
+| Browser shows `ERR_CONNECTION_REFUSED` from another machine | The Web UI listens on 127.0.0.1 by default. Start it with `--host 0.0.0.0`, or use an SSH tunnel. |
+| Browser spins, then times out, from another machine | The cloud firewall (e.g. Azure NSG) is blocking the port. Add an inbound rule for 19899, or use an SSH tunnel. |
 | Web UI page is blank / 404 | Run `npm run build:flask` (Step 13b), and start the server from `~/RD-Agent`. |
 | Want a completely fresh start | `cd ~/RD-Agent && rm -rf log git_ignore_folder/RD-Agent_workspace git_ignore_folder/traces pickle_cache prompt_cache.db` |
 
