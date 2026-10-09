@@ -93,7 +93,9 @@ git clone https://github.com/vijayvmane11-afk/Test-2026-16-09.git ~/rdagent-guid
 - this guide;
 - `constraints-py311.txt` and `constraints-qlib-py310.txt`, the exact package versions tested for the
   two conda envs;
-- `check_llm.py`, an LLM connectivity test.
+- `check_llm.py`, an LLM connectivity test;
+- `trading/`, a daily job that turns a `fin_factor` result into a top-50 list (see
+  [Trading a result daily](#trading-a-result-daily)).
 
 ## Step 5: The `rdagent` environment (Python 3.11)
 
@@ -367,6 +369,15 @@ rdagent ui --port 19899 --log-dir log/        # view results
 
 Resume an interrupted run from its saved session:
 `rdagent fin_factor --path log/<run>/__session__/<loop>/<step>`.
+
+## Trading a result daily
+
+RD-Agent never updates prices and never re-runs a finished result on new data. Every loop
+backtests the same fixed dates (2017-01-01 to 2020-08-01 by default), so running it around the clock
+gives you better research, not a list of stocks to trade today. To trade a `fin_factor` result, use
+[`trading/`](trading/README.md). After each close it updates a separate copy of the prices,
+recomputes your factors, retrains the model and prints tomorrow's sells and buys. It can run while
+RD-Agent is running.
 
 ---
 
