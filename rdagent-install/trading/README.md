@@ -2,8 +2,9 @@
 
 RD-Agent finds factors and backtests them on fixed historical dates. It does not update prices or
 tell you what to trade today. This folder adds that missing daily step for a `fin_factor` result:
-after each China market close, it updates prices, recomputes your factors, retrains RD-Agent's
-LightGBM model and prints the sells and buys for the next session.
+after each market close, it updates prices, recomputes your factors, retrains RD-Agent's
+LightGBM model and prints the sells and buys for the next session. It covers China (the default)
+and the US (`REGION=us`, see [US market](#us-market)).
 
 It reproduces RD-Agent's setup exactly. That setup is in
 `rdagent/scenarios/qlib/experiment/factor_template/conf_combined_factors.yaml` and Qlib's
@@ -103,18 +104,52 @@ crontab -e
 30 9 * * 1-5 bash $HOME/rdagent-guide/rdagent-install/trading/daily_top50.sh >> $HOME/rd-trading/daily.log 2>&1
 ```
 
-Settings are environment variables at the top of `daily_top50.sh`: `WORK_DIR`, `STRATEGY_DIR`,
-`LIVE_DATA`, `QLIB_SRC`, `HOLDINGS`, and `SKIP_UPDATE=1` to score without downloading prices. The
+Settings are environment variables at the top of `daily_top50.sh`: `REGION` (`cn` or `us`),
+`MARKET`, `WORK_DIR`, `STRATEGY_DIR`, `LIVE_DATA`, `QLIB_SRC`, `HOLDINGS`, and `SKIP_UPDATE=1` to
+score without downloading prices. The
 rolling training window (train from 2008, validate on the 2 years ending 3 months ago) can be
 changed with `top50.py score --train-start/--train-end/--valid-start/--valid-end`.
+
+## US market
+
+Use this for a result from an RD-Agent run on US data (see `../us-market/README.md`). Set
+`REGION=us` and everything else follows: the S&P 500 universe, the US price collector, the data copy
+`~/.qlib/qlib_data/us_data_live` and the work folder `~/rd-trading-us`, so China and US holdings
+never mix.
+
+One-time setup, after `../us-market/get_us_data.sh download`:
+
+```bash
+cp -r ~/.qlib/qlib_data/us_data ~/.qlib/qlib_data/us_data_live
+mkdir -p ~/rd-trading-us/strategy && touch ~/rd-trading-us/holdings.txt
+```
+
+Put the US run's factor files and `base_factors.json` in `~/rd-trading-us/strategy/`, as in step 3
+above. Holdings are plain tickers, one per line, for example `AAPL`.
+
+```bash
+REGION=us bash ~/rdagent-guide/rdagent-install/trading/daily_top50.sh
+```
+
+New York closes at 16:00 Eastern, which is 20:00 UTC in summer and 21:00 UTC in winter. Run the job at
+21:30 UTC, Monday to Friday:
+
+```bash
+30 21 * * 1-5 REGION=us bash $HOME/rdagent-guide/rdagent-install/trading/daily_top50.sh >> $HOME/rd-trading-us/daily.log 2>&1
+```
+
+The price file for the factors holds every stock that has ever been in the S&P 500, the same as
+RD-Agent's US price file after `switch_market.sh us`. Tested on Qlib's US data (last day 2020-11-10):
+the job scored 503 S&P 500 stocks. The US Yahoo update was not run in that test.
 
 ## Running it next to `fin_quant` or `fin_factor`
 
 You do **not** need to stop RD-Agent. The two jobs share nothing that either one changes:
 
-- **Price data:** the trading job writes only `cn_data_live`. RD-Agent reads only `cn_data`. The
-  script refuses to run if `LIVE_DATA` points at `cn_data`.
-- **Files:** the trading job writes only to `~/rd-trading`. RD-Agent writes to `~/RD-Agent`.
+- **Price data:** the trading job writes only `cn_data_live` (or `us_data_live`). RD-Agent reads
+  only `cn_data` (or `us_data`). The script refuses to run if `LIVE_DATA` points at either.
+- **Files:** the trading job writes only to `~/rd-trading` (or `~/rd-trading-us`). RD-Agent writes
+  to `~/RD-Agent`.
 - **CPU:** both are heavy. LightGBM uses 20 threads for a few minutes, and a research run slows down
   during that time. On a small VM, schedule the trading job when you can accept that.
 
