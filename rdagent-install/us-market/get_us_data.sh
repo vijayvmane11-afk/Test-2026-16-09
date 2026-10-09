@@ -59,18 +59,11 @@ PY
     ;;
 
   update)
-    # Same collector as the trading job. The first run fills 2020-11 to today and can take hours.
+    # S&P 500 members only, plus a member-list refresh and full history for new members (see
+    # yahoo_update.py). The first run fills 2020-11 to yesterday: about an hour.
     echo "== Updating $US_DATA from Yahoo"
     conda activate rdagent4qlib
-    work="$(mktemp -d)"
-    trap 'rm -rf "$work"' EXIT
-    (cd "$QLIB_SRC/scripts/data_collector/yahoo" &&
-      python collector.py update_data_to_bin \
-        --source_dir "$work/source" \
-        --normalize_dir "$work/normalize" \
-        --region US \
-        --qlib_data_1d_dir "$US_DATA" \
-        --end_date "$(date -d tomorrow +%F)")
+    python "$(dirname "$0")/yahoo_update.py" --qlib-dir "$US_DATA" --qlib-src "$QLIB_SRC"
     conda deactivate
     echo "Last trading day in data: $(tail -1 "$US_DATA/calendars/day.txt")"
     ;;
