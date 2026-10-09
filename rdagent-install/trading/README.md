@@ -47,7 +47,7 @@ commit as the `rdagent4qlib` env:
 git clone https://github.com/microsoft/qlib.git ~/qlib
 cd ~/qlib && git checkout 2fb9380b342556ddb50a4b24e4fe8655d548b2b8
 conda activate rdagent4qlib
-pip install -r ~/qlib/scripts/data_collector/yahoo/requirements.txt \
+pip install -r ~/qlib/scripts/data_collector/yahoo/requirements.txt fake-useragent \
   -c ~/rdagent-guide/rdagent-install/constraints-qlib-py310.txt
 conda deactivate
 ```
@@ -91,17 +91,19 @@ Files: ~/rd-trading/picks/2026-10-09_scores.csv, ~/rd-trading/picks/2026-10-09_o
 After you place the trades, **edit `holdings.txt` to match what you actually own.** The next day's
 orders are computed from that file.
 
-**Timing.** The scores use prices up to today's close. In RD-Agent's backtest, the trades for those
+**Timing.** The scores use prices up to the last close in the data. In RD-Agent's backtest, the trades for those
 scores happen at the **next** day's close. Trading near the close of the next session matches the
 backtest most closely.
 
-**Automate it.** Shanghai closes at 15:00 China time (07:00 UTC). Run the job at 09:30 UTC, Monday to
-Friday, to leave time for Yahoo to publish the day:
+**Automate it.** Qlib's Yahoo collector refuses an end date after today and excludes the end date, so
+a run fetches prices up to **yesterday** (VM clock; Azure VMs use UTC). Run the job after midnight
+UTC, Tuesday to Saturday, to pick up the previous session. Shanghai opens at 01:30 UTC, so 00:30 UTC
+leaves time to place the trades:
 
 ```bash
 crontab -e
 # add:
-30 9 * * 1-5 bash $HOME/rdagent-guide/rdagent-install/trading/daily_top50.sh >> $HOME/rd-trading/daily.log 2>&1
+30 0 * * 2-6 bash $HOME/rdagent-guide/rdagent-install/trading/daily_top50.sh >> $HOME/rd-trading/daily.log 2>&1
 ```
 
 Settings are environment variables at the top of `daily_top50.sh`: `REGION` (`cn` or `us`),
@@ -131,16 +133,17 @@ above. Holdings are plain tickers, one per line, for example `AAPL`.
 REGION=us bash ~/rdagent-guide/rdagent-install/trading/daily_top50.sh
 ```
 
-New York closes at 16:00 Eastern, which is 20:00 UTC in summer and 21:00 UTC in winter. Run the job at
-21:30 UTC, Monday to Friday:
+For the same reason as above, run it after midnight UTC, Tuesday to Saturday. It then scores the
+previous New York session, and you trade at the next one:
 
 ```bash
-30 21 * * 1-5 REGION=us bash $HOME/rdagent-guide/rdagent-install/trading/daily_top50.sh >> $HOME/rd-trading-us/daily.log 2>&1
+30 1 * * 2-6 REGION=us bash $HOME/rdagent-guide/rdagent-install/trading/daily_top50.sh >> $HOME/rd-trading-us/daily.log 2>&1
 ```
 
-The price file for the factors holds every stock that has ever been in the S&P 500, the same as
-RD-Agent's US price file after `switch_market.sh us`. Tested on Qlib's US data (last day 2020-11-10):
-the job scored 503 S&P 500 stocks. The US Yahoo update was not run in that test.
+The US price update uses `../us-market/yahoo_update.py`: it fetches only current S&P 500 members,
+refreshes the member list and adds the full history of new members. The price file for the factors
+holds every stock that has ever been in the S&P 500, the same as RD-Agent's US price file after
+`switch_market.sh us`.
 
 ## Running it next to `fin_quant` or `fin_factor`
 

@@ -33,14 +33,21 @@ fi
 if [ "$SKIP_UPDATE" != "1" ]; then
   echo "== 1/4 Updating prices in $LIVE_DATA"
   conda activate rdagent4qlib
-  rm -rf "$WORK_DIR/yahoo_source" "$WORK_DIR/yahoo_normalize"
-  (cd "$QLIB_SRC/scripts/data_collector/yahoo" &&
-    python collector.py update_data_to_bin \
-      --source_dir "$WORK_DIR/yahoo_source" \
-      --normalize_dir "$WORK_DIR/yahoo_normalize" \
-      --region "${REGION^^}" \
-      --qlib_data_1d_dir "$LIVE_DATA" \
-      --end_date "$(date -d tomorrow +%F)")
+  if [ "$REGION" = us ]; then
+    # S&P 500 members only; Qlib's own US update fetches ~19,600 tickers (see us-market/)
+    python "$HERE/../us-market/yahoo_update.py" --qlib-dir "$LIVE_DATA" --qlib-src "$QLIB_SRC"
+  else
+    rm -rf "$WORK_DIR/yahoo_source" "$WORK_DIR/yahoo_normalize"
+    # Yahoo refuses an end date after today and excludes the end date, so this fetches up to
+    # yesterday. That is why the cron jobs in README.md run after midnight.
+    (cd "$QLIB_SRC/scripts/data_collector/yahoo" &&
+      python collector.py update_data_to_bin \
+        --source_dir "$WORK_DIR/yahoo_source" \
+        --normalize_dir "$WORK_DIR/yahoo_normalize" \
+        --region CN \
+        --qlib_data_1d_dir "$LIVE_DATA" \
+        --end_date "$(date +%F)")
+  fi
   conda deactivate
 fi
 echo "Last trading day in data: $(tail -1 "$LIVE_DATA/calendars/day.txt")"

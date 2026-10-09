@@ -21,6 +21,7 @@ The US costs are an assumption for a commission-free broker plus slippage. Chang
 
 - `get_us_data.sh`: downloads Qlib's US data, repairs it for the Qlib version RD-Agent uses, and
   updates it from Yahoo.
+- `yahoo_update.py`: the Yahoo update itself (used by `get_us_data.sh update` and the trading job).
 - `switch_market.sh`: edits RD-Agent's templates for the US (`us`) or restores China (`cn`).
 
 ## Steps
@@ -38,8 +39,12 @@ was written by a newer Qlib than the one RD-Agent pins: its stock folders start 
 member lists have an extra column, so without the repair Qlib reads no data at all. `download` runs
 the repair for you. `get_us_data.sh fix` repeats it and is safe to run again.
 
-**2. Bring it up to date from Yahoo.** This needs the Qlib source checkout from the trading README
-(`~/qlib`). The first run fills November 2020 to today for about 500 stocks and can take hours:
+**2. Bring it up to date from Yahoo.** This needs the Qlib source checkout and collector packages
+from step 2 of the trading README (`~/qlib`, including `fake-useragent`). It refreshes `sp500.txt`
+from Wikipedia (its old copy is kept as `sp500.txt.bak-<date>`), fills November 2020 to yesterday for
+every member since then, and downloads the full history of members that have no prices yet or whose
+ticker belonged to a different company before (such as CEG). That takes
+about an hour; members that were acquired or delisted come back empty, which is expected:
 
 ```bash
 bash ~/rdagent-guide/rdagent-install/us-market/get_us_data.sh update
@@ -106,14 +111,20 @@ See [the trading README](../trading/README.md#us-market) for the folder layout a
 
 ## Limits
 
-- **Survivorship bias.** Qlib's `sp500.txt` has 755 entries, and 505 of them are still marked as
-  members. Companies that left the index, including failed ones, are under-represented, so US
-  backtests look better than reality.
+- **Survivorship bias.** Companies that left the S&P 500 and were delisted have no prices after they
+  left Yahoo, and Qlib's bundled list under-represents pre-2020 leavers. US backtests look somewhat
+  better than reality.
+- **Wikipedia layout.** The member refresh reads Wikipedia's "List of S&P 500 companies" and
+  "Historical components of the S&P 500" pages. If Wikipedia changes them again, the script warns,
+  keeps the old `sp500.txt` and updates prices for the old member list.
 - **Data quality.** Yahoo is a free source. Splits, dividends and delistings are sometimes late or
   wrong. Use a paid feed for real money.
 - **Tested** in a sandbox with Qlib's US data (last day 2020-11-10): the download and repair, the
   switch and its revert on an RD-Agent v1.0.0 checkout, the switched price-file script (660 stocks,
   1.8 million rows), and RD-Agent's switched baseline backtest with Qlib (S&P 500, test from
-  2019-01-01, benchmark `^gspc`). Not tested: the Yahoo update and a full `rdagent fin_factor` run.
+  2019-01-01, benchmark `^gspc`). On the author's VM: the switch, a Yahoo update to 2026-10-08 and a
+  10-loop `rdagent fin_factor` run, and `yahoo_update.py` from the 2020 data to 2026-10-08 (49 minutes,
+  503 current members, member list identical to a hand-built one). The reused-ticker fix was tested
+  with Yahoo and Wikipedia mocked.
 
 > This is an engineering tool, not financial advice. Paper-trade before using real money.
