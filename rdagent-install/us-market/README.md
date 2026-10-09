@@ -40,9 +40,9 @@ member lists have an extra column, so without the repair Qlib reads no data at a
 the repair for you. `get_us_data.sh fix` repeats it and is safe to run again.
 
 **2. Bring it up to date from Yahoo.** This needs the Qlib source checkout and collector packages
-from step 2 of the trading README (`~/qlib`, including `fake-useragent`). It fills November 2020 to
-yesterday for the current S&P 500 members, refreshes `sp500.txt` from Wikipedia (its old copy is kept
-as `sp500.txt.bak-<date>`) and downloads the full history of members added since 2020. That takes
+from step 2 of the trading README (`~/qlib`, including `fake-useragent`). It refreshes `sp500.txt`
+from Wikipedia (its old copy is kept as `sp500.txt.bak-<date>`), fills November 2020 to yesterday for
+every member since then, and downloads the full history of members that have no prices yet. That takes
 about an hour; members that were acquired or delisted come back empty, which is expected:
 
 ```bash
@@ -114,8 +114,8 @@ See [the trading README](../trading/README.md#us-market) for the folder layout a
   left Yahoo, and Qlib's bundled list under-represents pre-2020 leavers. US backtests look somewhat
   better than reality.
 - **Wikipedia layout.** The member refresh reads Wikipedia's "List of S&P 500 companies" and
-  "Historical components of the S&P 500" pages. If Wikipedia changes them again, the refresh fails
-  and the price update before it has already been saved.
+  "Historical components of the S&P 500" pages. If Wikipedia changes them again, the script warns,
+  keeps the old `sp500.txt` and updates prices for the old member list.
 - **Data quality.** Yahoo is a free source. Splits, dividends and delistings are sometimes late or
   wrong. Use a paid feed for real money.
 - **Tested** in a sandbox with Qlib's US data (last day 2020-11-10): the download and repair, the

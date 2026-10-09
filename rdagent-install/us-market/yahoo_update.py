@@ -11,8 +11,9 @@ problems for this use:
 
 This script runs the same Qlib collector, normalizer and dumper, but:
 
-1. updates only stocks that are still S&P 500 members (plus the ^GSPC, ^NDX and ^DJI indexes);
-2. refreshes instruments/sp500.txt from Wikipedia's current pages;
+1. refreshes instruments/sp500.txt from Wikipedia's current pages;
+2. updates only stocks that are S&P 500 members since the data's last day (plus the ^GSPC, ^NDX and
+   ^DJI indexes), including members added later whose prices stopped when they left Yahoo's list;
 3. downloads the full history of members that have no prices in the data yet.
 
 Yahoo refuses an end date after today, and the end date is excluded, so the data reaches the last
@@ -156,27 +157,34 @@ def main():
         ).dump()
 
     try:
-        # 1. Current members already in the data: fetch from the data's last day to today
         last_day = (qlib_dir / "calendars" / "day.txt").read_text().split()[-1]
-        current = sp500_members(qlib_dir, last_day) | set(INDEX_TICKERS)
-        existing = sorted(c for c in current if has_features(qlib_dir, c))
-        print(f"== Updating {len(existing)} symbols from {last_day} to before {today}")
-        fetch(existing, last_day, "update", extend=True)
 
-        # 2. Refresh the member list (backup kept next to it)
+        # 1. Refresh the member list first (backup kept next to it), so members added since the
+        #    data was built are updated too. If Wikipedia fails, the old list is used.
         if not args.skip_members:
             from data_collector.us_index.collector import SP500Index
 
             inst = qlib_dir / "instruments" / "sp500.txt"
-            shutil.copy(inst, inst.with_name(f"sp500.txt.bak-{today}"))
+            backup = inst.with_name(f"sp500.txt.bak-{today}")
+            shutil.copy(inst, backup)
             before = sp500_members(qlib_dir, "2099-12-31")
-            make_sp500_index(SP500Index)(index_name="SP500", qlib_dir=str(qlib_dir)).parse_instruments()
-            after = sp500_members(qlib_dir, "2099-12-31")
-            print(f"== Member list refreshed: {len(after)} current members, "
-                  f"added {len(after - before)}, removed {len(before - after)}")
+            try:
+                make_sp500_index(SP500Index)(index_name="SP500", qlib_dir=str(qlib_dir)).parse_instruments()
+                after = sp500_members(qlib_dir, "2099-12-31")
+                print(f"== Member list refreshed: {len(after)} current members, "
+                      f"added {len(after - before)}, removed {len(before - after)}")
+            except Exception as e:  # keep updating prices with the old list
+                shutil.copy(backup, inst)
+                print(f"WARNING: member refresh failed ({e!r}); using the old sp500.txt")
 
-        # 3. Members since the data's start that have no prices yet: fetch their full history
-        new = sorted(c for c in sp500_members(qlib_dir, last_day) if not has_features(qlib_dir, c))
+        # 2. Members since the data's last day that already have prices: fetch from that day to today
+        members = sp500_members(qlib_dir, last_day)
+        existing = sorted(c for c in members | set(INDEX_TICKERS) if has_features(qlib_dir, c))
+        print(f"== Updating {len(existing)} symbols from {last_day} to before {today}")
+        fetch(existing, last_day, "update", extend=True)
+
+        # 3. Members with no prices yet: fetch their full history
+        new = sorted(c for c in members if not has_features(qlib_dir, c))
         if new:
             print(f"== Fetching full history for {len(new)} members without prices: {' '.join(new)}")
             fetch(new, args.history_start, "new", extend=False)
