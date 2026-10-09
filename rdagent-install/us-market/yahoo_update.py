@@ -13,8 +13,9 @@ This script runs the same Qlib collector, normalizer and dumper, but:
 
 1. refreshes instruments/sp500.txt from Wikipedia's current pages;
 2. updates only stocks that are S&P 500 members since the data's last day (plus the ^GSPC, ^NDX and
-   ^DJI indexes), including members added later whose prices stopped when they left Yahoo's list;
-3. downloads the full history of members that have no prices in the data yet.
+   ^DJI indexes);
+3. downloads the full history of members that have no prices in the data yet, or whose prices stop
+   before the data's last day (a ticker reused by a different company, such as CEG).
 
 Yahoo refuses an end date after today, and the end date is excluded, so the data reaches the last
 trading day before today (VM time). Run it after midnight to include the previous session.
@@ -26,6 +27,7 @@ import argparse
 import datetime
 import os
 import shutil
+import struct
 import sys
 import tempfile
 from io import StringIO
@@ -60,6 +62,25 @@ def sp500_members(qlib_dir, since):
 
 def has_features(qlib_dir, code):
     return (qlib_dir / "features" / code.lower()).is_dir()
+
+
+def last_price_index(qlib_dir, code):
+    """Calendar index of the symbol's last close, or -1 if it has none."""
+    f = qlib_dir / "features" / code.lower() / "close.day.bin"
+    if not f.is_file() or f.stat().st_size < 8:
+        return -1
+    with f.open("rb") as fp:
+        start = int(struct.unpack("<f", fp.read(4))[0])
+    return start + f.stat().st_size // 4 - 2
+
+
+def forget_symbols(qlib_dir, codes):
+    """Delete the symbols' price folders and all.txt rows, so the dumper writes them as new stocks."""
+    for code in codes:
+        shutil.rmtree(qlib_dir / "features" / code.lower(), ignore_errors=True)
+    all_txt = qlib_dir / "instruments" / "all.txt"
+    lines = all_txt.read_text().splitlines()
+    all_txt.write_text("".join(f"{line}\n" for line in lines if line.split("\t")[0].upper() not in codes))
 
 
 def make_sp500_index(base):
@@ -135,7 +156,7 @@ def main():
 
     work = Path(tempfile.mkdtemp(prefix="yahoo_update_"))
 
-    def fetch(symbols, start, tag, extend):
+    def fetch(symbols, start, tag, extend, replace=()):
         collector.YahooCollectorUS1d.get_instrument_list = lambda self: sorted(symbols)
         run = collector.Run(
             source_dir=str(work / f"{tag}_source"), normalize_dir=str(work / f"{tag}_normalize"), region="US"
@@ -149,6 +170,9 @@ def main():
             run.normalize_data_1d_extend(str(qlib_dir))
         else:
             run.normalize_data()
+        # Old prices of a reused ticker are replaced only once Yahoo has returned the new ones
+        got = {f.stem.upper() for f in (work / f"{tag}_normalize").glob("*.csv")}
+        forget_symbols(qlib_dir, {c for c in replace if c in got})
         DumpDataUpdate(
             data_path=str(work / f"{tag}_normalize"),
             qlib_dir=str(qlib_dir),
@@ -177,21 +201,29 @@ def main():
                 shutil.copy(backup, inst)
                 print(f"WARNING: member refresh failed ({e!r}); using the old sp500.txt")
 
-        # 2. Members since the data's last day that already have prices: fetch from that day to today
+        # 2. Members whose prices reach the data's last day: fetch from that day to today
         members = sp500_members(qlib_dir, last_day)
-        existing = sorted(c for c in members | set(INDEX_TICKERS) if has_features(qlib_dir, c))
+        last_idx = len((qlib_dir / "calendars" / "day.txt").read_text().split()) - 1
+        current = [c for c in sorted(members | set(INDEX_TICKERS)) if has_features(qlib_dir, c)]
+        existing = [c for c in current if last_price_index(qlib_dir, c) >= last_idx]
         print(f"== Updating {len(existing)} symbols from {last_day} to before {today}")
         fetch(existing, last_day, "update", extend=True)
 
-        # 3. Members with no prices yet: fetch their full history
+        # 3. Members with no prices, or with older prices that stop before the last day (a ticker
+        #    reused by a different company, such as CEG): fetch their full history
+        stale = sorted(set(current) - set(existing) - set(INDEX_TICKERS))
         new = sorted(c for c in members if not has_features(qlib_dir, c))
-        if new:
+        if new or stale:
             print(f"== Fetching full history for {len(new)} members without prices: {' '.join(new)}")
-            fetch(new, args.history_start, "new", extend=False)
+            print(f"   and {len(stale)} whose prices stop before {last_day}: {' '.join(stale)}")
+            fetch(new + stale, args.history_start, "new", extend=False, replace=set(stale))
 
-        missing = sorted(c for c in sp500_members(qlib_dir, "2099-12-31") if not has_features(qlib_dir, c))
-        print(f"Done. Last day in data: {(qlib_dir / 'calendars' / 'day.txt').read_text().split()[-1]}. "
-              f"Current members without Yahoo data: {' '.join(missing) or 'none'}")
+        days = (qlib_dir / "calendars" / "day.txt").read_text().split()
+        missing = sorted(
+            c for c in sp500_members(qlib_dir, "2099-12-31") if last_price_index(qlib_dir, c) < len(days) - 1
+        )
+        print(f"Done. Last day in data: {days[-1]}. "
+              f"Current members without prices on that day: {' '.join(missing) or 'none'}")
     finally:
         shutil.rmtree(work, ignore_errors=True)
 

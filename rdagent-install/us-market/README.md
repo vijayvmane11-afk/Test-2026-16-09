@@ -42,7 +42,8 @@ the repair for you. `get_us_data.sh fix` repeats it and is safe to run again.
 **2. Bring it up to date from Yahoo.** This needs the Qlib source checkout and collector packages
 from step 2 of the trading README (`~/qlib`, including `fake-useragent`). It refreshes `sp500.txt`
 from Wikipedia (its old copy is kept as `sp500.txt.bak-<date>`), fills November 2020 to yesterday for
-every member since then, and downloads the full history of members that have no prices yet. That takes
+every member since then, and downloads the full history of members that have no prices yet or whose
+ticker belonged to a different company before (such as CEG). That takes
 about an hour; members that were acquired or delisted come back empty, which is expected:
 
 ```bash
@@ -122,6 +123,8 @@ See [the trading README](../trading/README.md#us-market) for the folder layout a
   switch and its revert on an RD-Agent v1.0.0 checkout, the switched price-file script (660 stocks,
   1.8 million rows), and RD-Agent's switched baseline backtest with Qlib (S&P 500, test from
   2019-01-01, benchmark `^gspc`). On the author's VM: the switch, a Yahoo update to 2026-10-08 and a
-  10-loop `rdagent fin_factor` run. `yahoo_update.py` was tested with Yahoo and Wikipedia mocked.
+  10-loop `rdagent fin_factor` run, and `yahoo_update.py` from the 2020 data to 2026-10-08 (49 minutes,
+  503 current members, member list identical to a hand-built one). The reused-ticker fix was tested
+  with Yahoo and Wikipedia mocked.
 
 > This is an engineering tool, not financial advice. Paper-trade before using real money.
