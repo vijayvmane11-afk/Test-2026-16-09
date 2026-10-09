@@ -4,8 +4,9 @@ Three subcommands, called in order by daily_top50.sh (see README.md in this fold
 
     build-pv   rdagent4qlib env   Qlib data -> daily_pv.h5 (the price file RD-Agent factors read)
     factors    rdagent env        run every factor .py in the strategy folder -> combined_factors.parquet
-    score      rdagent4qlib env   retrain RD-Agent's LightGBM setup, score today's CSI 300,
-                                  and turn the scores into sells and buys for the next session
+    score      rdagent4qlib env   retrain RD-Agent's LightGBM setup, score today's CSI 300
+                                  (or S&P 500 with --region us), and turn the scores into sells
+                                  and buys for the next session
 
 The model, features and trading rule copy RD-Agent's
 rdagent/scenarios/qlib/experiment/factor_template/conf_combined_factors.yaml and Qlib's
@@ -23,6 +24,7 @@ from pathlib import Path
 import pandas as pd
 
 PV_FIELDS = ["$open", "$close", "$high", "$low", "$volume", "$factor"]
+DEFAULT_MARKET = {"cn": "csi300", "us": "sp500"}
 
 # Same hyperparameters as RD-Agent's conf_combined_factors.yaml
 LGB_KWARGS = {
@@ -43,9 +45,14 @@ def build_pv(args):
     import qlib
     from qlib.data import D
 
-    qlib.init(provider_uri=args.data_dir, region="cn")
-    # Same query as RD-Agent's factor_data_template/generate.py
-    df = D.features(D.instruments(), PV_FIELDS, freq="day").swaplevel().sort_index().loc[args.start :]
+    qlib.init(provider_uri=args.data_dir, region=args.region)
+    # Same query as RD-Agent's factor_data_template/generate.py. For the US, that file (as written by
+    # us-market/switch_market.sh) keeps only stocks that have ever been in the market.
+    if args.market == "all":
+        instruments = D.instruments()
+    else:
+        instruments = D.list_instruments(D.instruments(args.market), as_list=True)
+    df = D.features(instruments, PV_FIELDS, freq="day").swaplevel().sort_index().loc[args.start :]
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
     df.to_hdf(out, key="data")
@@ -121,14 +128,15 @@ def score(args):
     from qlib.data.dataset import DatasetH
     from qlib.data.dataset.handler import DataHandlerLP
 
-    qlib.init(provider_uri=args.data_dir, region="cn")
+    qlib.init(provider_uri=args.data_dir, region=args.region)
+    market = args.market or DEFAULT_MARKET[args.region]
     last = pd.Timestamp(D.calendar(freq="day")[-1])
     seg = _segments(last, args)
     print("segments:", seg)
 
     base = json.loads(Path(args.strategy_dir, "base_factors.json").read_text())
     handler = DataHandlerLP(
-        instruments=args.market,
+        instruments=market,
         start_time=seg["train"][0],
         end_time=seg["test"][1],
         data_loader={
@@ -196,6 +204,8 @@ def main():
     b.add_argument("--data-dir", required=True)
     b.add_argument("--out", required=True)
     b.add_argument("--start", default="2008-12-29")
+    b.add_argument("--region", choices=["cn", "us"], default="cn")
+    b.add_argument("--market", default="all", help="all instruments, or e.g. sp500 for its past and present members")
     b.set_defaults(func=build_pv)
 
     f = sub.add_parser("factors")
@@ -210,7 +220,8 @@ def main():
     s.add_argument("--factors", required=True)
     s.add_argument("--holdings", required=True)
     s.add_argument("--out-dir", required=True)
-    s.add_argument("--market", default="csi300")
+    s.add_argument("--region", choices=["cn", "us"], default="cn")
+    s.add_argument("--market", help="default: csi300 for cn, sp500 for us")
     s.add_argument("--topk", type=int, default=50)
     s.add_argument("--n-drop", type=int, default=5)
     s.add_argument("--train-start", default="2008-01-01")

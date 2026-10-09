@@ -96,6 +96,8 @@ git clone https://github.com/vijayvmane11-afk/Test-2026-16-09.git ~/rdagent-guid
 - `check_llm.py`, an LLM connectivity test;
 - `trading/`, a daily job that turns a `fin_factor` result into a top-50 list (see
   [Trading a result daily](#trading-a-result-daily)).
+- `us-market/`, scripts that switch RD-Agent from China to the US market (see
+  [Switching to the US market](#switching-to-the-us-market)).
 
 ## Step 5: The `rdagent` environment (Python 3.11)
 
@@ -378,6 +380,14 @@ gives you better research, not a list of stocks to trade today. To trade a `fin_
 [`trading/`](trading/README.md). After each close it updates a separate copy of the prices,
 recomputes your factors, retrains the model and prints tomorrow's sells and buys. It can run while
 RD-Agent is running.
+
+## Switching to the US market
+
+RD-Agent's Qlib scenarios are hardcoded to China (CSI 300, China costs and price limits). To research
+the S&P 500 instead, follow [`us-market/`](us-market/README.md). It downloads and repairs Qlib's US
+data, switches RD-Agent's templates with one command (`switch_market.sh us`, undone with
+`switch_market.sh cn`), and lists the date settings for a fresh run. The trading job takes `REGION=us`
+for US results.
 
 ---
 

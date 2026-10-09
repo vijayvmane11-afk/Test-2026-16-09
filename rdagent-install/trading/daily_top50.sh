@@ -1,11 +1,18 @@
 #!/usr/bin/env bash
-# Daily top-50 list for an RD-Agent fin_factor result. Run after the China market close.
+# Daily top-50 list for an RD-Agent fin_factor result. Run after the market close.
 # Setup and usage: README.md in this folder.
 set -euo pipefail
 
-WORK_DIR="${WORK_DIR:-$HOME/rd-trading}"                       # outputs, holdings.txt, scratch files
+REGION="${REGION:-cn}"                                         # cn (CSI 300) or us (S&P 500)
+case "$REGION" in
+  cn) DEFAULT_MARKET=csi300; DEFAULT_WORK_DIR="$HOME/rd-trading" ;;
+  us) DEFAULT_MARKET=sp500; DEFAULT_WORK_DIR="$HOME/rd-trading-us" ;;
+  *) echo "REGION must be cn or us" >&2; exit 1 ;;
+esac
+WORK_DIR="${WORK_DIR:-$DEFAULT_WORK_DIR}"                      # outputs, holdings.txt, scratch files
 STRATEGY_DIR="${STRATEGY_DIR:-$WORK_DIR/strategy}"             # base_factors.json + factor .py files
-LIVE_DATA="${LIVE_DATA:-$HOME/.qlib/qlib_data/cn_data_live}"   # trading copy of the Qlib data
+LIVE_DATA="${LIVE_DATA:-$HOME/.qlib/qlib_data/${REGION}_data_live}"  # trading copy of the Qlib data
+MARKET="${MARKET:-$DEFAULT_MARKET}"                            # Qlib universe to score
 QLIB_SRC="${QLIB_SRC:-$HOME/qlib}"                             # Qlib source checkout (price collector)
 HOLDINGS="${HOLDINGS:-$WORK_DIR/holdings.txt}"                 # what you hold now, one code per line
 SKIP_UPDATE="${SKIP_UPDATE:-0}"                                # 1 = use the data as it is
@@ -18,8 +25,8 @@ cd "$WORK_DIR"   # Qlib writes its ./mlruns here
 # shellcheck disable=SC1091
 source "$(conda info --base)/etc/profile.d/conda.sh"
 
-if [ "$LIVE_DATA" = "$HOME/.qlib/qlib_data/cn_data" ]; then
-  echo "LIVE_DATA must not be RD-Agent's cn_data folder. Use a separate copy (see README.md)." >&2
+if [ "$LIVE_DATA" = "$HOME/.qlib/qlib_data/cn_data" ] || [ "$LIVE_DATA" = "$HOME/.qlib/qlib_data/us_data" ]; then
+  echo "LIVE_DATA must not be RD-Agent's own data folder. Use a separate copy (see README.md)." >&2
   exit 1
 fi
 
@@ -31,7 +38,7 @@ if [ "$SKIP_UPDATE" != "1" ]; then
     python collector.py update_data_to_bin \
       --source_dir "$WORK_DIR/yahoo_source" \
       --normalize_dir "$WORK_DIR/yahoo_normalize" \
-      --region CN \
+      --region "${REGION^^}" \
       --qlib_data_1d_dir "$LIVE_DATA" \
       --end_date "$(date -d tomorrow +%F)")
   conda deactivate
@@ -40,7 +47,9 @@ echo "Last trading day in data: $(tail -1 "$LIVE_DATA/calendars/day.txt")"
 
 echo "== 2/4 Building daily_pv.h5"
 conda activate rdagent4qlib
-python "$TOP50" build-pv --data-dir "$LIVE_DATA" --out "$WORK_DIR/daily_pv.h5"
+if [ "$REGION" = us ]; then PV_MARKET="$MARKET"; else PV_MARKET=all; fi  # as RD-Agent's generate.py
+python "$TOP50" build-pv --data-dir "$LIVE_DATA" --out "$WORK_DIR/daily_pv.h5" \
+  --region "$REGION" --market "$PV_MARKET"
 conda deactivate
 
 echo "== 3/4 Computing factors from $STRATEGY_DIR"
@@ -52,5 +61,6 @@ conda deactivate
 echo "== 4/4 Training the model and scoring today's stocks"
 conda activate rdagent4qlib
 python "$TOP50" score --data-dir "$LIVE_DATA" --strategy-dir "$STRATEGY_DIR" \
-  --factors "$WORK_DIR/combined_factors.parquet" --holdings "$HOLDINGS" --out-dir "$WORK_DIR/picks"
+  --factors "$WORK_DIR/combined_factors.parquet" --holdings "$HOLDINGS" --out-dir "$WORK_DIR/picks" \
+  --region "$REGION" --market "$MARKET"
 conda deactivate
